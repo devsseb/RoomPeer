@@ -32,7 +32,7 @@
 		// Create new peer
 		if (array_key_exists('create', $_POST)) {
 
-			$result['key'] = uniqid();
+			$result['key'] = str_shuffle(hexdec(uniqid()).str_pad(rand(0, 9999), 6, '0'));
 
 			db('INSERT INTO guest VALUES({0},NULL,strftime("%Y-%m-%d %H:%M:%f", "now"))', $result['key']);
 			$result['id'] = $db->lastInsertId();
@@ -51,13 +51,13 @@
 
 			if (!$guests and array_key_exists('checkUpdate', $_POST))
 
-				$result['full'] = true;
+				$result['lock'] = true;
 
 			elseif (!$guests)
 
 				throw new Exception('Room with key "' . $key . '" doesn\'t exists');
 
-			elseif (array_key_exists('full', $_POST)) {
+			elseif (array_key_exists('lock', $_POST)) {
 
 				db('DELETE FROM guest WHERE key = {0}', $key);
 				db('DELETE FROM guestTransmit WHERE key = {0}', $key);
@@ -69,6 +69,7 @@
 
 				db('INSERT INTO guest VALUES({0},NULL,strftime("%Y-%m-%d %H:%M:%f", "now"))', $_POST['key']);
 				$result['id'] = $db->lastInsertId();
+				$result['total'] = count($guests);
 
 			} else {
 
@@ -121,6 +122,8 @@
 							$result['ids'][$guestId] = ($datetime < $guestDatetime ? 'offer' : 'answer');
 						}
 					}
+
+					$result['total'] = count($guests);
 
 				}
 			}

@@ -1,5 +1,5 @@
 /** 
- * RoomPeer v1.0.0
+ * RoomPeer v1.0.1
  * Use Webrtc to create peer connections
  * https://github.com/devsseb/RoomPeer
  * 
@@ -7,6 +7,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+
+"use strict";
 
 var RoomPeer = function(options)
 {
@@ -34,38 +36,79 @@ var RoomPeer = function(options)
 	this.checkUpdateTimeout = null;
 	this.onicecandidateTimeout = {};
 	this.inExit = false;
+	this.total = 0;
+	this.maxsize = 65536;
+	this.locked = false;
+	this.currentMessage = {};
 	this.events = {
 		ready: [],
 		create: [],
 		enter: [],
 		guest: [],
 		guestExit: [],
-		full: [],
+		lock: [],
 		exit: [],
 		message : [],
 		error: [],
 		event: []
 	};
-	for (name in this.events)
+	for (var name in this.events)
 		if (options['on' + name])
 			this.on(name, options['on' + name]);
 
-	setTimeout(function() {
-		this.log('Ready');
-		this.trigger('ready');
-	}.bind(this));
+	this.computeStunServers(options.stunServers || 'https://gist.githubusercontent.com/mondain/b0ec1cf5f60ae726202e/raw/0d0a751880b7ab2a0cd4a8e606316074cf9eeb8e/public-stun-list.txt');
+}
+
+RoomPeer.prototype.computeStunServers = function(servers)
+{
+	var computed = true;
+	if (typeof servers != 'object') {
+		computed = false;
+
+		if (typeof servers == 'string') {
+			if (servers.substr(0, 4) != 'http')
+				this.computeStunServers([servers]);
+			else {
+				const req = new XMLHttpRequest();
+    			req.open('GET', servers); 
+				req.onreadystatechange = function(e) {
+	    			if (e.target.readyState === XMLHttpRequest.DONE) {
+						if (e.target.status === 200) {
+							servers = e.target.responseText.split("\n");
+							this.computeStunServers(servers);
+						} else
+							this.log('Fail to retrieve stun servers', 8);
+	    			}
+    			}.bind(this)
+				req.send();
+			}
+		}
+	}
+
+	if (computed) {
+
+		var randomIndex = Math.floor(Math.random() * Math.floor(servers.length));
+
+		this.stunserver = servers[randomIndex].replace('stun:', '');
+
+		setTimeout(function() {
+			this.log('Ready with stun server stun:' + this.stunserver);
+			this.trigger('ready', this.stunserver);
+		}.bind(this));
+	}
+
+
 }
 
 RoomPeer.prototype.log = function(message, errorId)
 {
-	if (this.debug) {
 		if (errorId) {
-			console.error('[RoomPeer' + (this.name ? ' "' + this.name + '"' : '') + ' error ' + errorId + '] ' + message);
+			if (this.debug)
+				console.error('[RoomPeer' + (this.name ? ' "' + this.name + '"' : '') + ' error ' + errorId + '] ' + message);
 			this.trigger('error', message, errorId);
 		}
-		else
+		else if (this.debug)
 			console.log('[RoomPeer' + (this.name ? ' "' + this.name + '"' : '') + '] ' + message);	
-	}
 
 }
 
@@ -111,6 +154,7 @@ RoomPeer.prototype.create = function(callback)
 
 		this.key = response.key;
 		this.id = response.id;
+		this.total = 1;
 		
 		this.log('Create, room key : ' + this.key + ', guest id : ' + this.id);
 		if (callback)
@@ -131,11 +175,12 @@ RoomPeer.prototype.enter = function(key, callback)
 
 	this.serverSend({enter: true}, function(response) {
 		this.id = response.id;
+		this.total = response.total;
 
 		this.log('Enter, guest id : ' + this.id);
 		if (callback)
-			callback(this.id);
-		this.trigger('enter', this.id);
+			callback(this.id, this.total);
+		this.trigger('enter', this.id, this.total);
 
 		this.checkUpdate();
 
@@ -148,17 +193,20 @@ RoomPeer.prototype.checkUpdate = function()
 {
 	this.serverSend({checkUpdate : true}, function(response) {
 
-		if (response.full) {
+		if (response.lock) {
 			clearTimeout(this.checkUpdateTimeout);
 			this.checkUpdateTimeout = null;
-			this.log('Room is full');
-			this.trigger('full');
+			this.locked = true;
+			this.log('Room is locked (' +  this.total + ' guest' + (this.total > 1 ? 's' : '') + ')');
+			this.trigger('lock', this.total);
 			return;
 		}
 
-		for (id in response.ids) {
+		this.total = response.total;
+
+		for (var id in response.ids) {
 			this.peers[id] = {
-				connection: new RTCPeerConnection({ "iceServers": [{ "urls": ["stun:stun.l.google.com:19302"] }] }),
+				connection: new RTCPeerConnection({ "iceServers": [{ "urls": ["stun:stun.services.mozilla.com"] }] }),
 				channel: null,
 				negociation: {
 					description : null,
@@ -236,47 +284,65 @@ RoomPeer.prototype.setChannel = function(id, channel)
 
 	this.peers[id].channel = channel;
 	channel.onopen = function(id, e) {
+		this.currentMessage[id] = '';
 		this.log('Guest "' + id + '" is here');
-		this.trigger('guest', id);
+		this.trigger('guest', id, this.total);
 	}.bind(this, id);
 	channel.onclose = function(id, e) {
 		delete this.peers[id];
 		this.peersLength--;
+		this.total--;
 		if (this.inExit) {
 			if (!this.peersLength) {
 				this.log('Your are gone away');
 				this.trigger('exit');
 			}
-		} else if (!this.peersLength) {
+		} else if (!this.peersLength && this.locked) {
 			this.log('You left because everyone is gone');
 			this.trigger('exit');
 		} else {
 			this.log('Guest "' + id + '" is gone away');
-			this.trigger('guestExit', id);
+			this.trigger('guestExit', id, this.total);
 		}
 	}.bind(this, id);
 	channel.onmessage = function(id, e) {
-		this.log('Message from "' + id + '" : ' + e.data);
-		this.trigger('message', id, e.data);
+
+		var index = e.data.indexOf('.');
+		var count = e.data.indexOf('.', index + 1);
+		this.currentMessage[id]+= e.data.substr(count + 1);
+		count = e.data.substring(index + 1, count);
+		index = e.data.substring(0, index);
+
+		if (index == count) {
+			this.log('Message from "' + id + '" : ' + (this.currentMessage[id].length > 50 ? this.currentMessage[id].substr(0,50) + '...' : this.currentMessage[id]));
+			this.trigger('message', id, this.currentMessage[id]);
+			this.currentMessage[id] = '';
+		}
+	}.bind(this, id)
+	channel.onerror = function(id, e) {
+		this.log('Channel error from "' + id + '" : ' + e.message, 7);
 	}.bind(this, id)
 }
 
 RoomPeer.prototype.send = function(data)
 {
-	for (id in this.peers)
-		if (this.peers[id].channel && this.peers[id].channel.readyState == 'open')
-			this.peers[id].channel.send(data);
+	for (var id in this.peers)
+		if (this.peers[id].channel && this.peers[id].channel.readyState == 'open') {
+			var count = Math.ceil(data.length / this.maxsize);
+			for (var i = 0; i < count; i++)
+				this.peers[id].channel.send((i + 1) + '.' + count + '.' + data.substr(i * this.maxsize, this.maxsize));
+		}
 }
 
-RoomPeer.prototype.full = function()
+RoomPeer.prototype.lock = function()
 {
-	this.serverSend({full: true});
+	this.serverSend({lock: true});
 }
 
 RoomPeer.prototype.exit = function()
 {
 	this.inExit = true;
-	for (id in this.peers)
+	for (var id in this.peers)
 		this.peers[id].channel.close();
 }
 

@@ -22,7 +22,7 @@
 		<p><input id="message" disabled /><input type="button" disabled id="send" value="Send" /></p>
 
 		<h1>Actions</h1>
-		<p><input type="button" disabled id="full" value="Room is full" /></p>
+		<p><input type="button" disabled id="lock" value="Lock room" /></p>
 		<p><input type="button" disabled id="exit" value="Exit room" /></p>
 
 		<h1>Messages</h1>
@@ -35,7 +35,7 @@
 					$('#create,#roomKey,#enter').prop('disabled', false);
 				}.bind(this),
 				onguest: function(guestId) {
-					$('#message,#full,#send').prop('disabled', false);
+					$('#message,#lock,#send').prop('disabled', false);
 					$('<li data-id="' + guestId + '" style="color:green">' + guestId + '</li>').appendTo('#guests');
 					$('#guestsTotal').text(parseInt($('#guestsTotal').text()) + 1);
 				}.bind(this),
@@ -46,12 +46,12 @@
 				onmessage: function(id, message) {
 					$('<li style="color:green;">').text(id + ' : ' + message).appendTo('#messages')
 				}.bind(this),
-				onfull: function() {
-					$('#full').prop('disabled', true);
+				onlock: function() {
+					$('#lock').prop('disabled', true);
 				},
 				onexit: function() {
 					$('#createKey').text('');
-					$('#message,#send,#full,#exit').prop('disabled', true);
+					$('#message,#send,#lock,#exit').prop('disabled', true);
 					$('#create,#roomKey,#enter').prop('disabled', false);
 					$('#messages,#guests').empty();
 					$('#guestsTotal').text('');
@@ -83,7 +83,7 @@
  				$('<li style="color:blue;">').text($('#message').val()).appendTo('#messages')
 			});
 
-			$('#full').click(room.full.bind(room));
+			$('#lock').click(room.lock.bind(room));
 			$('#exit').click(room.exit.bind(room));
 
 			$(document).ready(function() {
