@@ -21,21 +21,36 @@
 			return $data->fetchAll(PDO::FETCH_ASSOC);
 		}
 
+		function randomString()
+		{
+			return strtoupper(str_shuffle(uniqid().str_pad(dechex(rand(0, 99999)), 5, '0')));
+		}
+
+		function generateGuestId()
+		{
+			do
+				$id = strtolower(randomString());
+			while (db('SELECT id FROM guest WHERE id = {0}', $id));
+
+			return $id;
+		}
+
 		$db = new PDO('sqlite:' . $dbFile);
 
 		if (!db('SELECT name FROM sqlite_master WHERE type="table" AND name="guest";')) {
-			db('CREATE TABLE guest			(key TEXT, id INTEGER PRIMARY KEY AUTOINCREMENT, datetime TEXT	)');
-			db('CREATE TABLE guestTransmit	(key TEXT, id INTEGER, guestId INTEGER	)');
-			db('CREATE TABLE negociation	(key TEXT, id INTEGER, guestId INTEGER, negociation TEXT,	transmit INTEGER)');
+			db('CREATE TABLE guest			(key TEXT, id TEXT, datetime TEXT	)');
+			db('CREATE TABLE guestTransmit	(key TEXT, id TEXT, guestId TEXT	)');
+			db('CREATE TABLE negociation	(key TEXT, id TEXT, guestId TEXT, negociation TEXT, transmit INTEGER)');
 		}
 
 		// Create new peer
 		if (array_key_exists('create', $_POST)) {
 
-			$result['key'] = str_shuffle(hexdec(uniqid()).str_pad(rand(0, 9999), 6, '0'));
+			$result['key'] = randomString();
+			$result['id'] = generateGuestId();
 
-			db('INSERT INTO guest VALUES({0},NULL,strftime("%Y-%m-%d %H:%M:%f", "now"))', $result['key']);
-			$result['id'] = $db->lastInsertId();
+
+			db('INSERT INTO guest VALUES({0},{1},strftime("%Y-%m-%d %H:%M:%f", "now"))', $result['key'], $result['id']);
 
 		} else {
 
@@ -67,8 +82,9 @@
 			// Connect peer
 			} elseif (array_key_exists('enter', $_POST)) {
 
-				db('INSERT INTO guest VALUES({0},NULL,strftime("%Y-%m-%d %H:%M:%f", "now"))', $_POST['key']);
-				$result['id'] = $db->lastInsertId();
+				$result['id'] = generateGuestId();
+
+				db('INSERT INTO guest VALUES({0},{1},strftime("%Y-%m-%d %H:%M:%f", "now"))', $_POST['key'], $result['id']);
 				$result['total'] = count($guests);
 
 			} else {
