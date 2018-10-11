@@ -1,5 +1,5 @@
 /** 
- * RoomPeer v1.0.1
+ * RoomPeer v1.0.2
  * Use Webrtc to create peer connections
  * https://github.com/devsseb/RoomPeer
  * 
@@ -309,12 +309,18 @@ RoomPeer.prototype.setChannel = function(id, channel)
 
 		var index = e.data.indexOf('.');
 		var count = e.data.indexOf('.', index + 1);
-		this.currentMessage[id]+= e.data.substr(count + 1);
+		var type = e.data.indexOf('.', count + 1);
+		this.currentMessage[id]+= e.data.substr(type + 1);
+		type = e.data.substring(count + 1, type);
 		count = e.data.substring(index + 1, count);
 		index = e.data.substring(0, index);
 
 		if (index == count) {
 			this.log('Message from "' + id + '" : ' + (this.currentMessage[id].length > 50 ? this.currentMessage[id].substr(0,50) + '...' : this.currentMessage[id]));
+
+			if (type != 'string')
+				this.currentMessage[id] = JSON.parse(this.currentMessage[id]);
+
 			this.trigger('message', id, this.currentMessage[id]);
 			this.currentMessage[id] = '';
 		}
@@ -326,11 +332,17 @@ RoomPeer.prototype.setChannel = function(id, channel)
 
 RoomPeer.prototype.send = function(data)
 {
+	var type = 'string';
+	if (typeof data != type) {
+		type = typeof data;
+		data = JSON.stringify(data);
+	}
+
 	for (var id in this.peers)
 		if (this.peers[id].channel && this.peers[id].channel.readyState == 'open') {
 			var count = Math.ceil(data.length / this.maxsize);
 			for (var i = 0; i < count; i++)
-				this.peers[id].channel.send((i + 1) + '.' + count + '.' + data.substr(i * this.maxsize, this.maxsize));
+				this.peers[id].channel.send((i + 1) + '.' + count + '.' + type + '.' + data.substr(i * this.maxsize, this.maxsize));
 		}
 }
 
