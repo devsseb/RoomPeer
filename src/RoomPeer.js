@@ -229,6 +229,11 @@ RoomPeer.prototype.checkUpdate = function()
 				}
 			}.bind(this, id);
 
+			this.peers[id].connection.oniceconnectionstatechange = function(id, e) {
+				if (e.target.iceConnectionState == 'disconnected')
+					this.deletePeer(id);
+			}.bind(this, id);
+
 			if (response.ids[id] == 'offer') {
 
 				this.setChannel(id, this.peers[id].connection.createDataChannel('roompeer.' + this.key + '.' + this.id + '.' + id));
@@ -288,23 +293,7 @@ RoomPeer.prototype.setChannel = function(id, channel)
 		this.log('Guest "' + id + '" is here');
 		this.trigger('guest', id, this.total);
 	}.bind(this, id);
-	channel.onclose = function(id, e) {
-		delete this.peers[id];
-		this.peersLength--;
-		this.total--;
-		if (this.inExit) {
-			if (!this.peersLength) {
-				this.log('Your are gone away');
-				this.trigger('exit');
-			}
-		} else if (!this.peersLength && this.locked) {
-			this.log('You left because everyone is gone');
-			this.trigger('exit');
-		} else {
-			this.log('Guest "' + id + '" is gone away');
-			this.trigger('guestExit', id, this.total);
-		}
-	}.bind(this, id);
+	channel.onclose = this.deletePeer.bind(this, id);
 	channel.onmessage = function(id, e) {
 
 		var index = e.data.indexOf('.');
@@ -328,6 +317,35 @@ RoomPeer.prototype.setChannel = function(id, channel)
 	channel.onerror = function(id, e) {
 		this.log('Channel error from "' + id + '" : ' + e.message, 7);
 	}.bind(this, id)
+}
+
+RoomPeer.prototype.deletePeer = function(id) {
+
+	if (!this.peers[id]) // Already closed
+		return;
+
+	this.peers[id].connection.close();
+	delete this.peers[id];
+	this.peersLength--;
+	this.total--;
+
+	if (!this.inExit && !this.locked)
+		this.serverSend({exit: id});
+
+	if (this.inExit) {
+		if (this.checkUpdateTimeout)
+			clearTimeout(this.checkUpdateTimeout);
+		if (!this.peersLength) {
+			this.log('Your are gone away');
+			this.trigger('exit');
+		}
+	} else if (!this.peersLength && this.locked) {
+		this.log('You left because everyone is gone');
+		this.trigger('exit');
+	} else {
+		this.log('Guest "' + id + '" is gone away');
+		this.trigger('guestExit', id, this.total);
+	}
 }
 
 RoomPeer.prototype.send = function(data)

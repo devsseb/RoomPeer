@@ -126,6 +126,17 @@
 					$result['total'] = count($guests);
 
 				}
+
+				elseif (array_key_exists('exit', $_POST)) {
+
+					db('DELETE FROM guest WHERE id = {0}', $_POST['exit']);
+					db('DELETE FROM guestTransmit WHERE id = {0}', $_POST['exit']);
+					db('DELETE FROM negociation WHERE id = {0}', $_POST['exit']);
+					$result['success'] = true;
+
+				}
+
+
 			}
 		}
 
