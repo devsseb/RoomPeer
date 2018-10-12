@@ -254,30 +254,31 @@ RoomPeer.prototype.checkUpdate = function()
 
 		}
 
-		for (var id in response.negociations) {
-			var negociation = JSON.parse(response.negociations[id]);
-			this.peers[id].connection.setRemoteDescription(new RTCSessionDescription(negociation.description));
+		if (!Array.isArray(response.negociations))
+			for (var id in response.negociations) {
+				var negociation = JSON.parse(response.negociations[id]);
+				this.peers[id].connection.setRemoteDescription(new RTCSessionDescription(negociation.description));
 
-			if (!this.peers[id].channel)
+				if (!this.peers[id].channel)
 
-				this.peers[id].connection.createAnswer().then(
-					function(id, description) {
-						this.peers[id].connection.setLocalDescription(this.peers[id].negociation.description = description);
-					}.bind(this, id),
-					function(error) {
-						this.log('Create answer error, ' + error.toString(), 5);
-					}.bind(this)
-				);
+					this.peers[id].connection.createAnswer().then(
+						function(id, description) {
+							this.peers[id].connection.setLocalDescription(this.peers[id].negociation.description = description);
+						}.bind(this, id),
+						function(error) {
+							this.log('Create answer error, ' + error.toString(), 5);
+						}.bind(this)
+					);
 
-			for (var i = 0; i < negociation.ices.length; i++)
-				this.peers[id].connection.addIceCandidate(new RTCIceCandidate(negociation.ices[i])).then(
-					function() {},
-					function(err) {
-						this.log('Add ice candidate error for guest "' + id + '", ' + err.toString(), 6);
-					}.bind(this)
-				);
+				for (var i = 0; i < negociation.ices.length; i++)
+					this.peers[id].connection.addIceCandidate(new RTCIceCandidate(negociation.ices[i])).then(
+						function() {},
+						function(err) {
+							this.log('Add ice candidate error for guest "' + id + '", ' + err.toString(), 6);
+						}.bind(this)
+					);
 
-		}
+			}
 
 		this.checkUpdateTimeout = setTimeout(this.checkUpdate.bind(this), 1000);
 
